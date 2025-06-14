@@ -198,7 +198,12 @@ async def root():
             "curl_example": 'curl -X POST "your-api-url/api/" -H "Content-Type: application/json" -d \'{"question": "Your question here"}\''
         }
     }
-
+@app.post("/")
+async def root_post(request: Request):
+        return {
+        "message": "POST request received at root. Use /api/ for actual queries.",
+        "status": "ok"
+    }
 
 
 if __name__ == "__main__":
@@ -206,11 +211,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
-    @app.post("/")
-    async def root_post(request: Request):
-        return {
-        "message": "POST request received at root. Use /api/ for actual queries.",
-        "status": "ok"
-    }
 
 
