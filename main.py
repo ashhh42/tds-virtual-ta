@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -130,96 +130,58 @@ KNOWLEDGE_BASE = {
 }
 
 def find_relevant_answer(question: str, image_description: str = "") -> tuple:
-    """Find the most relevant answer based on keywords"""
     question_lower = (question + " " + image_description).lower()
-    
-    # Score each knowledge base entry
     scores = {}
     for topic, data in KNOWLEDGE_BASE.items():
-        score = 0
-        for keyword in data["keywords"]:
-            if keyword in question_lower:
-                score += question_lower.count(keyword)
+        score = sum(question_lower.count(keyword) for keyword in data["keywords"])
         scores[topic] = score
-    
-    # Find best match
     if scores and max(scores.values()) > 0:
         best_topic = max(scores, key=scores.get)
-        data = KNOWLEDGE_BASE[best_topic]
-        return data["answer"], data["links"]
-    
-    # Default response for unknown topics
+        return KNOWLEDGE_BASE[best_topic]["answer"], KNOWLEDGE_BASE[best_topic]["links"]
     return (
         f"I understand you're asking about '{question[:50]}...' in the TDS course. While I don't have specific information about this topic in my current knowledge base, I recommend checking the course materials or posting on the Discourse forum for detailed help from instructors and peers.",
         [
-            {
-                "url": "https://discourse.onlinedegree.iitm.ac.in/c/tools-in-data-science",
-                "text": "TDS Discourse Forum - Post your question here"
-            },
-            {
-                "url": "https://tds.s-anand.net/",
-                "text": "TDS Course Materials and Resources"
-            }
+            {"url": "https://discourse.onlinedegree.iitm.ac.in/c/tools-in-data-science", "text": "TDS Discourse Forum - Post your question here"},
+            {"url": "https://tds.s-anand.net/", "text": "TDS Course Materials and Resources"}
         ]
     )
 
 def process_image_description(image_base64: str) -> str:
-    """Simple image processing - extract basic info"""
     try:
-        # Decode and get basic info about the image
         image_data = base64.b64decode(image_base64)
         size = len(image_data)
-        
-        # Simple heuristics based on image content (placeholder)
-        if size > 100000:  # Large image, likely screenshot
+        if size > 100000:
             return "screenshot code error interface"
-        elif size > 50000:  # Medium image
+        elif size > 50000:
             return "diagram chart visualization"
-        else:  # Small image
+        else:
             return "icon button interface element"
-            
     except Exception:
         return ""
 
 @app.post("/api/", response_model=AnswerResponse)
 async def answer_question(request: QuestionRequest):
-    """Main API endpoint to answer student questions"""
     try:
         start_time = time.time()
-        
-        # Process image if provided
-        image_description = ""
-        if request.image:
-            image_description = process_image_description(request.image)
-        
-        # Find relevant answer
+        image_description = process_image_description(request.image) if request.image else ""
         answer, links = find_relevant_answer(request.question, image_description)
-        
-        # Convert links to proper format
         formatted_links = [Link(url=link["url"], text=link["text"]) for link in links]
-        
-        # Ensure response time is reasonable (under 30 seconds as required)
-        processing_time = time.time() - start_time
-        if processing_time > 25:  # Leave 5 second buffer
+        if time.time() - start_time > 25:
             raise HTTPException(status_code=408, detail="Request timeout")
-        
         return AnswerResponse(answer=answer, links=formatted_links)
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {
-        "status": "healthy", 
+        "status": "healthy",
         "message": "TDS Virtual TA is running",
         "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information"""
     return {
         "message": "TDS Virtual TA API - Helping students with Tools in Data Science course",
         "version": "1.0.0",
@@ -235,6 +197,13 @@ async def root():
             },
             "curl_example": 'curl -X POST "your-api-url/api/" -H "Content-Type: application/json" -d \'{"question": "Your question here"}\''
         }
+    }
+
+@app.post("/")
+async def root_post(request: Request):
+    return {
+        "message": "POST request received at root. Use /api/ for actual queries.",
+        "status": "ok"
     }
 
 if __name__ == "__main__":
